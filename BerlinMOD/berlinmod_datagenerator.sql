@@ -534,7 +534,11 @@ BEGIN
 			END IF;
 			segLength = ST_Distance(p1, p2);
 			IF segLength < P_EPSILON THEN
-				RAISE EXCEPTION 'Segment % of edge % has zero length', j, i;
+				p1 = p2;
+				x1 = x2;
+				y1 = y2;
+				CONTINUE;
+				-- RAISE EXCEPTION 'Segment % of edge % has zero length', j, i;
 			END IF;
 			fraction = P_EVENT_LENGTH / segLength;
 			noFracs = ceiling(segLength / P_EVENT_LENGTH);
@@ -1268,13 +1272,17 @@ BEGIN
 	SELECT COUNT(*) INTO noNodes FROM Nodes;
 
 	FOR i IN 1..noVehicles LOOP
-		IF nodeChoice = 'Network Based' THEN
-			homeNode = random_int(1, noNodes);
-			workNode = random_int(1, noNodes);
-		ELSE
-			homeNode = berlinmod_selectHomeNode();
-			workNode = berlinmod_selectWorkNode();
-		END IF;
+		homeNode = 0;
+		workNode = 0;
+		WHILE homeNode = workNode LOOP
+			IF nodeChoice = 'Network Based' THEN
+				homeNode = random_int(1, noNodes);
+				workNode = random_int(1, noNodes);
+			ELSE
+				homeNode = berlinmod_selectHomeNode();
+				workNode = berlinmod_selectWorkNode();
+			END IF;
+		END LOOP;
 		IF homeNode IS NULL OR workNode IS NULL THEN
 			RAISE EXCEPTION '    The home and the work nodes cannot be NULL';
 		END IF;
