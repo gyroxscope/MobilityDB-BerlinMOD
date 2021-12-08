@@ -903,7 +903,7 @@ $$ LANGUAGE plpgsql STRICT;
 -- The argument disturbData correspond to the parameter P_DISTURB_DATA
 
 DROP FUNCTION IF EXISTS berlinmod_createTrips;
-CREATE FUNCTION berlinmod_createTrips(noVehicles int, noDays int,
+CREATE FUNCTION berlinmod_createTrips(beginVehicle int, endVehicle int, noDays int,
 	startDay date, disturbData boolean, messages text, tripGeneration text)
 RETURNS void AS $$
 DECLARE
@@ -929,18 +929,21 @@ DECLARE
 	tripSeq int = 0;
 	-- Loop variables
 	i int; j int; k int; m int;
+	startTime timestamptz; endTime timestamptz;
 BEGIN
-	RAISE INFO 'Creation of the Trips table started at %', clock_timestamp();
-	DROP TABLE IF EXISTS Trips;
-	CREATE TABLE Trips(vehicle int, day date, seq int, source bigint,
-		target bigint, trip tgeompoint, trajectory geometry,
-		PRIMARY KEY (vehicle, day, seq));
+	-- RAISE INFO 'Creation of the Trips table started at %', clock_timestamp();
+	-- DROP TABLE IF EXISTS Trips;
+	-- CREATE TABLE Trips(vehicle int, day date, seq int, source bigint,
+	-- 	target bigint, trip tgeompoint, trajectory geometry,
+	-- 	PRIMARY KEY (vehicle, day, seq));
 	-- Loop for each vehicle
-	FOR i IN 1..noVehicles LOOP
+	startTime = clock_timestamp();
+	RAISE INFO 'Execution started at %', startTime;	
+	FOR i IN beginVehicle..endVehicle LOOP
 		IF messages = 'medium' OR messages = 'verbose' THEN
 			RAISE INFO '-- Vehicle %', i;
 		ELSEIF i % 100 = 1 THEN
-			RAISE INFO '  Vehicles % to %', i, least(i + 99, noVehicles);
+			RAISE INFO '  Vehicles % to %', i, least(i + 99, endVehicle);
 		END IF;
 		-- Get home -> work and work -> home paths
 		SELECT home, work INTO homeNode, workNode
@@ -1067,6 +1070,10 @@ BEGIN
 			d = d + 1 * interval '1 day';
 		END LOOP;
 	END LOOP;
+	endTime = clock_timestamp();
+	RAISE INFO 'Execution finished at %', endTime;	
+	RAISE INFO 'Execution time %', endTime - startTime;
+	RAISE INFO 'Number of trips generated %', endVehicle - beginVehicle + 1;
 	RETURN;
 END;
 $$ LANGUAGE plpgsql STRICT;
@@ -1537,32 +1544,37 @@ BEGIN
 	-- Generate the trips
 	-------------------------------------------------------------------------
 
-	PERFORM berlinmod_createTrips(noVehicles, noDays, startDay, disturbData, 
-		messages, tripGeneration);
+	DROP TABLE IF EXISTS Trips;
+	CREATE TABLE Trips(vehicle int, day date, seq int, source bigint,
+		target bigint, trip tgeompoint, trajectory geometry,
+		PRIMARY KEY (vehicle, day, seq));
 
-	-- Get the number of trips generated
-	SELECT COUNT(*) INTO noTrips FROM Trips;
+	 -- PERFORM berlinmod_createTrips(noVehicles, noDays, startDay, disturbData, 
+	 -- 	messages, tripGeneration);
 
-	SELECT clock_timestamp() INTO endTime;
-	IF messages = 'medium' OR messages = 'verbose' THEN
-		RAISE INFO '-----------------------------------------------------------------------';
-		RAISE INFO 'BerlinMOD data generator with scale factor %', scaleFactor;
-		RAISE INFO '-----------------------------------------------------------------------';
-		RAISE INFO 'Parameters:';
-		RAISE INFO '------------';
-		RAISE INFO 'No. of vehicles = %, No. of days = %, Start day = %',
-			noVehicles, noDays, startDay;
-		RAISE INFO 'Path mode = %, Disturb data = %', pathMode, disturbData;
-		RAISE INFO 'Verbosity = %, Trip generation = %', messages, tripGeneration;
-	END IF;
-	RAISE INFO '------------------------------------------------------------------';
-	RAISE INFO 'Execution started at %', startTime;
-	RAISE INFO 'Execution finished at %', endTime;
-	RAISE INFO 'Execution time %', endTime - startTime;
-	RAISE INFO 'Call to pgRouting with % paths lasted %',
-		noPaths, endPgr - startPgr;
-	RAISE INFO 'Number of trips generated %', noTrips;
-	RAISE INFO '------------------------------------------------------------------';
+	 -- -- Get the number of trips generated
+	 -- SELECT COUNT(*) INTO noTrips FROM Trips;
+
+	 -- SELECT clock_timestamp() INTO endTime;
+	 -- IF messages = 'medium' OR messages = 'verbose' THEN
+	 -- 	RAISE INFO '-----------------------------------------------------------------------';
+	 -- 	RAISE INFO 'BerlinMOD data generator with scale factor %', scaleFactor;
+	 -- 	RAISE INFO '-----------------------------------------------------------------------';
+	 -- 	RAISE INFO 'Parameters:';
+	 -- 	RAISE INFO '------------';
+	 -- 	RAISE INFO 'No. of vehicles = %, No. of days = %, Start day = %',
+	 -- 		noVehicles, noDays, startDay;
+	 -- 	RAISE INFO 'Path mode = %, Disturb data = %', pathMode, disturbData;
+	 -- 	RAISE INFO 'Verbosity = %, Trip generation = %', messages, tripGeneration;
+	 -- END IF;
+	 -- RAISE INFO '------------------------------------------------------------------';
+	 -- RAISE INFO 'Execution started at %', startTime;
+	 -- RAISE INFO 'Execution finished at %', endTime;
+	 -- RAISE INFO 'Execution time %', endTime - startTime;
+	  RAISE INFO 'Call to pgRouting with % paths lasted %',
+	  	noPaths, endPgr - startPgr;
+	 -- RAISE INFO 'Number of trips generated %', noTrips;
+	 -- RAISE INFO '------------------------------------------------------------------';
 
 	-------------------------------------------------------------------
 
