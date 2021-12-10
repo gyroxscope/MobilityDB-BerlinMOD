@@ -1188,6 +1188,9 @@ DECLARE
 	startTime timestamptz; endTime timestamptz;
 	-- Start and end time of the batch call to pgRouting
 	startPgr timestamptz; endPgr timestamptz;
+	startVeh timestamptz; endVeh timestamptz;
+	startLes timestamptz; endLes timestamptz;
+	startUpdate timestamptz; endUpdate timestamptz;
 	-- Queries sent to pgrouting for choosing the path according to P_PATH_MODE
 	-- and the number of records defined by LIMIT/OFFSET
 	query1_pgr text; query2_pgr text;
@@ -1278,6 +1281,7 @@ BEGIN
 	-- Get the number of nodes
 	SELECT COUNT(*) INTO noNodes FROM Nodes;
 
+	startVeh = clock_timestamp();
 	FOR i IN 1..noVehicles LOOP
 		homeNode = 0;
 		workNode = 0;
@@ -1290,6 +1294,9 @@ BEGIN
 				workNode = berlinmod_selectWorkNode();
 			END IF;
 		END LOOP;
+		IF i % 1000 = 1 THEN
+			RAISE INFO '  Vehicles % to %', i, least(i + 999, noVehicles);
+		END IF;
 		IF homeNode IS NULL OR workNode IS NULL THEN
 			RAISE EXCEPTION '    The home and the work nodes cannot be NULL';
 		END IF;
@@ -1313,13 +1320,20 @@ BEGIN
 		SELECT i, ROW_NUMBER() OVER () as seq, node
 		FROM Temp;
 	END LOOP;
+	endVeh = clock_timestamp();
+	RAISE INFO 'Call to create vehicles end at % lasted %', endVeh, endVeh - startVeh;
 
 	-- Build indexes to speed up processing
 	CREATE UNIQUE INDEX Vehicle_id_idx ON Vehicle USING BTREE(id);
 	CREATE UNIQUE INDEX Neighbourhood_pkey_idx ON Neighbourhood USING BTREE(vehicle, seq);
+	RAISE INFO 'Creation of the index table end at %', clock_timestamp();
 
+	startUpdate = clock_timestamp();
+	CREATE INDEX idx_neighbourhood_vehicle ON Neighbourhood(vehicle);
 	UPDATE Vehicle V
 	SET noNeighbours = (SELECT COUNT(*) FROM Neighbourhood N WHERE N.vehicle = V.id);
+	endUpdate = clock_timestamp();
+	RAISE INFO 'Call to update vehicles end at % lasted %', endUpdate, endUpdate - startUpdate;
 
 	-------------------------------------------------------------------------
 	-- Create auxiliary benchmarking data
@@ -1384,6 +1398,7 @@ BEGIN
 	-------------------------------------------------------------------------
 
 	RAISE INFO 'Creating the LeisureTrip table';
+	startLes = clock_timestamp();
 	DROP TABLE IF EXISTS LeisureTrip;
 	CREATE TABLE LeisureTrip(vehicle int, day date, tripNo int,
 		seq int, source bigint, target bigint,
@@ -1392,6 +1407,9 @@ BEGIN
 	FOR i IN 1..noVehicles LOOP
 		IF messages = 'verbose' THEN
 			RAISE INFO '-- Vehicle %', i;
+		END IF;
+		IF i % 1000 = 1 THEN
+			RAISE INFO '  Vehicles % to %', i, least(i + 999, noVehicles);
 		END IF;
 		-- Get home node and number of neighbour nodes
 		SELECT home, noNeighbours INTO homeNode, noNeigh
@@ -1466,6 +1484,8 @@ BEGIN
 
 	-- Build indexes to speed up processing
 	CREATE INDEX Destinations_vehicle_idx ON Destinations USING BTREE(vehicle);
+	endLes = clock_timestamp();
+	RAISE INFO 'Call to create leisure trips end at % lasted %', endLes, endLes - startLes;
 
 	-------------------------------------------------------------------------
 	-- Call pgRouting to generate the paths
@@ -1571,8 +1591,8 @@ BEGIN
 	 -- RAISE INFO 'Execution started at %', startTime;
 	 -- RAISE INFO 'Execution finished at %', endTime;
 	 -- RAISE INFO 'Execution time %', endTime - startTime;
-	  RAISE INFO 'Call to pgRouting with % paths lasted %',
-	  	noPaths, endPgr - startPgr;
+	RAISE INFO 'Call to pgRouting with % paths lasted %',
+		noPaths, endPgr - startPgr;
 	 -- RAISE INFO 'Number of trips generated %', noTrips;
 	 -- RAISE INFO '------------------------------------------------------------------';
 
