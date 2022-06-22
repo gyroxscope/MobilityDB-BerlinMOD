@@ -278,8 +278,8 @@ END;
 $$ LANGUAGE plpgsql STRICT;
 
 DROP FUNCTION IF EXISTS berlinmod_generate;
-CREATE FUNCTION berlinmod_generate(scaleFactor float DEFAULT NULL,
-	noVehicles int DEFAULT NULL, noDays int DEFAULT NULL,
+CREATE FUNCTION berlinmod_generate(beginVehicle int DEFAULT NULL,
+	endVehicle int DEFAULT NULL, noDays int DEFAULT NULL,
 	startDay date DEFAULT NULL, pathMode text DEFAULT NULL,
 	nodeChoice text DEFAULT NULL, disturbData boolean DEFAULT NULL,
 	messages text DEFAULT NULL, tripGeneration text DEFAULT NULL)
@@ -399,14 +399,14 @@ BEGIN
 	-------------------------------------------------------------------------
 
 	-- Setting the parameters of the generation
-	IF scaleFactor IS NULL THEN
-		scaleFactor = P_SCALE_FACTOR;
+	IF beginVehicle IS NULL THEN
+		beginVehicle = 1;
 	END IF;
-	IF noVehicles IS NULL THEN
-		noVehicles = round((2000 * sqrt(scaleFactor))::numeric, 0)::int;
+	IF endVehicle IS NULL THEN
+		endVehicle = 100;
 	END IF;
 	IF noDays IS NULL THEN
-		noDays = round((sqrt(scaleFactor) * 28)::numeric, 0)::int + 2;
+		noDays = 14;
 	END IF;
 	IF startDay IS NULL THEN
 		startDay = P_START_DAY;
@@ -428,12 +428,12 @@ BEGIN
 	END IF;
 
 	RAISE INFO '------------------------------------------------------------------';
-	RAISE INFO 'Starting the BerlinMOD data generator with scale factor %', scaleFactor;
+	RAISE INFO 'Starting the BerlinMOD data generator';
 	RAISE INFO '------------------------------------------------------------------';
 	RAISE INFO 'Parameters:';
 	RAISE INFO '------------';
 	RAISE INFO 'No. of vehicles = %, No. of days = %, Start day = %',
-		noVehicles, noDays, startDay;
+		endVehicle - beginVehicle + 1, noDays, startDay;
 	RAISE INFO 'Path mode = %, Disturb data = %', pathMode, disturbData;
 	RAISE INFO 'Verbosity = %, Trip generation = %', messages, tripGeneration;
 	startTime = clock_timestamp();
@@ -470,7 +470,7 @@ BEGIN
 	SELECT COUNT(*) INTO noNodes FROM Nodes;
 
 	startVeh = clock_timestamp();
-	FOR i IN 1..noVehicles LOOP
+	FOR i IN beginVehicle..endVehicle LOOP
 		homeNode = 0;
 		workNode = 0;
 		WHILE homeNode = workNode LOOP
@@ -478,7 +478,7 @@ BEGIN
 			workNode = random_int(1, noNodes);
 		END LOOP;
 		IF i % 1000 = 1 THEN
-			RAISE INFO '  Vehicles % to %', i, least(i + 999, noVehicles);
+			RAISE INFO '  Vehicles % to %', i, least(i + 999, endVehicle);
 		END IF;
 		IF homeNode IS NULL OR workNode IS NULL THEN
 			RAISE EXCEPTION '    The home and the work nodes cannot be NULL';
@@ -541,12 +541,12 @@ BEGIN
 		seq int, source bigint, target bigint,
 		PRIMARY KEY (vehicle, day, tripNo, seq));
 	-- Loop for every vehicle
-	FOR i IN 1..noVehicles LOOP
+	FOR i IN beginVehicle..endVehicle LOOP
 		IF messages = 'verbose' THEN
 			RAISE INFO '-- Vehicle %', i;
 		END IF;
 		IF i % 1000 = 1 THEN
-			RAISE INFO '  Vehicles % to %', i, least(i + 999, noVehicles);
+			RAISE INFO '  Vehicles % to %', i, least(i + 999, endVehicle);
 		END IF;
 		-- Get home node and number of neighbour nodes
 		SELECT home_osm, noNeighbours INTO homeOsm, noNeigh
